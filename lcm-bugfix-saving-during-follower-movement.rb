@@ -13,21 +13,36 @@
 
 =begin
 
- When using Liam's Lisa Core Movement script, and you try to save the game
- while a follower is moving or falling off a cliff or laying down after falling
- the game will silently error, refuse to save, and also delete the save that
- you were trying to overwrite. This is because LCM uses Fibers to execute
- movement, and Marshal doesn't like Fibers.
+ Fixes the bug where saving the game during character movement will delete
+ the savefile you're trying to overwrite.
 
 =end
 
-Object.class_eval do
+class Class
 
-  define_method(:patch) do |klass, method_name, &_|
-    src = klass.instance_method(method_name)
-    klass.send(:define_method, method_name) do |*args|
-      _.call(self, *args, &src.bind(self))
+  def patch(method_name, &new_body)
+    patch_name = "___patch___#{method_name}".to_sym
+    old_body = instance_method(method_name)
+    define_method(patch_name, &new_body)
+    new_body = instance_method(patch_name)
+    undef_method(patch_name)
+    class_exec do
+      define_method method_name do |*args, &block|
+        new_body.bind(self)[old_body.bind(self), *args, &block]
+      end
     end
+  end
+
+end
+
+class Object
+
+  def invar(name)
+    instance_variable_get(name)
+  end
+
+  def invar!(name, val)
+    instance_variable_set(name, val)
   end
 
 end
@@ -35,9 +50,9 @@ end
 DataManager.singleton_class.class_eval do
 
   if $imported && $imported['Liam-LisaCoreMove']
-    patch(self, :save_game) do |this, index, &_|
+    patch(:save_game) do |super_, index|
       fibers = {}
-      $game_player.followers.each do |flw|
+      [$game_player, $game_player.followers].flatten.each do |flw|
         next if flw.lcmCustomConsecutiveMoveRoutesFiber.nil?
         next if flw.actor.nil?
 
@@ -45,9 +60,9 @@ DataManager.singleton_class.class_eval do
         flw.lcmCustomConsecutiveMoveRoutesFiber = nil
       end
 
-      this.save_game_without_rescue(index)
+      save_game_without_rescue(index)
 
-      $game_player.followers.each do |flw|
+      [$game_player, $game_player.followers].flatten.each do |flw|
         next if flw.actor.nil?
 
         flw.lcmCustomConsecutiveMoveRoutesFiber = fibers[flw.actor.id]
@@ -66,11 +81,11 @@ end
 
 Scene_Map.class_eval do
 
-  patch(self, :start) do |&_|
-    _.call
-    $game_player.followers.each do |flw|
+  patch(:start) do |super_|
+    super_[]
+    [$game_player, $game_player.followers].flatten.each do |flw|
       flw.lcmCustomConsecutiveMoveRoutesList = nil
-      flw.instance_variable_set(:@move_route, nil)
+      flw.invar!(:@move_route, nil)
       flw.lcmCustomConsecutiveMoveRoutesFiber = nil
       flw.setuplcmCustomConsecutiveMoveRoutes(RPG::MoveRoute.new)
     end
