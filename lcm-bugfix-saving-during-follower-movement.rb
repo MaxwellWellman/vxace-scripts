@@ -51,6 +51,18 @@ module MW_Core
 
     end
 
+    Object.module_eval do
+
+      def invar(name)
+        instance_variable_get(name)
+      end
+
+      def invar!(name, val)
+        instance_variable_set(name, val)
+      end
+
+    end
+
   end
 end
 
