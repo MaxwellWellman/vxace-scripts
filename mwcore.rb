@@ -19,7 +19,7 @@ module MWCORE
       def call_as(caller, *args, &block)
         temp_name = "unbound"
         while caller.singleton_class.method_defined?(temp_name)
-          unbound.concat("_")
+          temp_name.concat("_")
         end
         caller.define_singleton_method(temp_name, &self)
         unbound = caller.singleton_class.instance_method(temp_name)
