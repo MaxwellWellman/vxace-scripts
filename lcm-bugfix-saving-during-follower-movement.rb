@@ -75,6 +75,6 @@ proc do
 
   end
 
-  Object.remove_method(:patch) if p
+  Object.remove_method(:patch) unless p
 
 end[]
