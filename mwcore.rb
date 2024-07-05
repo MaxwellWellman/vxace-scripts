@@ -1,7 +1,17 @@
-module MWCORE
+module MW_CORE
   class_exec do
 
-    Class.class_eval do
+    $mwcore_initialized = true
+
+    MessageBox = Win32API.new('user32', 'MessageBox', 'LPPI', 'I')
+    GetActiveWindow = Win32API.new('user32', 'GetActiveWindow', [], 'L')
+    MB_YESNO = 0x00000004
+    MB_ICONWARNING = 0x00000030
+    MB_ICONERROR = 0x00000010
+    IDYES = 6
+    IDNO = 7
+
+    Module.class_eval do
 
       def patch(method_name, &new_body)
         old_body = instance_method(method_name)
@@ -31,6 +41,10 @@ module MWCORE
 
     IO.class_eval do
 
+      patch(:p) do |super_, first, *rest|
+        super_[first.to_s, *rest]
+      end
+
       patch(:puts) do |super_, first, *rest|
         super_[first.to_s, *rest]
       end
@@ -39,83 +53,17 @@ module MWCORE
 
     Object.class_eval do
 
-      def invar(name)
+      def invar_get(name)
         instance_variable_get(name)
       end
 
-      def invar!(name, val)
+      def invar_set(name, val)
         instance_variable_set(name, val)
       end
 
-      def call_method_as(target, method_name, *args, &block)
-        unbound = target.instance_method(method_name)
+      def call_method_as(source, method_name, *args, &block)
+        unbound = source.instance_method(method_name)
         unbound.bind(self)[*args, &block]
-      end
-
-      def audit(indent = 1)
-        case self
-        when Class, Integer, Float, TrueClass, FalseClass
-          return to_s
-        when NilClass
-          return 'nil'
-        when String
-          return "\"#{self}\""
-        when Symbol
-          return ":#{self}"
-        when Proc
-          return self.class.to_s
-        end
-        str = "#{"\t" * (indent - 1)}#{self.class} \{"
-        instance_variables.each do |invar_name|
-          val = instance_variable_get(invar_name)
-          val = if val.is_a?(Array) or val.is_a?(Hash)
-                  val.audit(indent + 1)
-                elsif indent >= 6
-                  val.to_s
-                else
-                  val.audit(indent + 1)
-                end
-          str.concat("\n#{"\t" * indent}#{invar_name} = #{val}")
-        end
-        str.concat("\n#{"\t" * (indent - 1)}\}")
-      end
-
-    end
-
-    Hash.class_eval do
-
-      def audit(indent = 1)
-        return '{}' if length.zero?
-
-        s = '{'
-        each_pair do |k, v|
-          s.concat("\n#{"\t" * indent}#{
-            k.is_a?(Symbol) ? ':' : "\""
-          }#{k}#{
-            k.is_a?(Symbol) ? '' : "\""
-          } => #{
-            v.audit(indent + 1)
-          },")
-        end
-        s.concat("\n#{"\t" * (indent - 1)}}")
-      end
-
-    end
-
-    Array.class_eval do
-
-      def audit(indent = 1)
-        return '[]' if length.zero?
-
-        s = '['
-        each do |e|
-          s.concat(
-            "\n#{"\t" * indent}#{
-              e.audit(indent + 1)
-            },"
-          )
-        end
-        s.concat("\n#{"\t" * (indent - 1)}]")
       end
 
     end
@@ -128,7 +76,7 @@ module MWCORE
 
     end
 
-    Integer.class_eval do
+    Numeric.class_eval do
 
       def clamp(s, e)
         [s, self, e].sort[1]
